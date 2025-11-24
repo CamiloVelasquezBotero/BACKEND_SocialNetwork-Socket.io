@@ -11,3 +11,13 @@ export type RegisterUserType = {
         id: number
     ]
 }
+
+export type FriendRequestAcceptedType = {
+    userData: {
+        id: number,
+        name: string,
+        email: string,
+    },
+    idSender: number,
+    action: string
+}

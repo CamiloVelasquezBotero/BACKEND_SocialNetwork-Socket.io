@@ -1,7 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import { Server } from 'socket.io';
-import type { ConnectedUsers, RegisterUserType } from './types/index.js';
+import type { ConnectedUsers, FriendRequestAcceptedType, RegisterUserType } from './types/index.js';
 import { connect } from 'http2';
 dotenv.config() // Habilitamos variables de entorno
 
@@ -45,7 +45,42 @@ io.on('connection', socket => {
         }
     })
 
+    socket.on('friend-request-accepted', ({userData, idSender, action}:FriendRequestAcceptedType, callback) => {
+        if(action == 'accept') {
+            // Revisamso si esta conectado para poderle enviar la notificacion
+            const isSenderConnected = connectedUsers[idSender]
+            if(isSenderConnected) {
+                // Agregamos el nuevo amigo al usuario emisor
+                isSenderConnected.friendsId.push(userData.id)
+                // Enviarle al idSender la notificacion de aceptado
+                io.to(isSenderConnected.socketId).emit('request-accepted-notification', userData)
+                callback(true) // Retornamos true para decirle que esta conectado
+                
+                const isUserConnected = connectedUsers[userData.id]
+                // Agregamos nuevo amigo al usuario receptor
+                if(isUserConnected)
+                    isUserConnected.friendsId.push(idSender)
+            }
+        }
+    })
+
+    socket.on('friend-removed', ({userId, userRemovedId}) => {
+        // Eliminar del state de amigos conectados
+        const isUserConnected = connectedUsers[userId]
+        if(isUserConnected) {
+            isUserConnected.friendsId = isUserConnected.friendsId.filter(id => id !== userRemovedId)
+        }
+
+        // Eliminar amigos del usuario removido tambien
+        const isUserRemovedConnected = connectedUsers[userRemovedId]
+        if(isUserRemovedConnected) {
+            isUserRemovedConnected.friendsId = isUserRemovedConnected.friendsId.filter(id => id !== userId)
+            io.to(isUserRemovedConnected.socketId).emit('friend-removed-notification', userId)
+        }
+    })
+
     socket.on('disconnect', () => {
+
         const userDisconnected = Object.keys(connectedUsers).find(userId => connectedUsers[userId]?.socketId === socket.id)
         if(userDisconnected) {
             const userInfo = connectedUsers[userDisconnected]
@@ -59,8 +94,6 @@ io.on('connection', socket => {
                     io.to(friend.socketId).emit('friend-disconnected', Number(userDisconnected))
                 }
             })
-            
-            
             socket.emit('friends-online', connectedUsers)
         }
     })
